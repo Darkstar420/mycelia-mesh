@@ -1,4 +1,5 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use std::sync::Arc;
 
 use futures::StreamExt;
@@ -12,6 +13,7 @@ use parking_lot::RwLock;
 pub struct Mesh {
     peer_id: PeerId,
     peers: Arc<RwLock<HashSet<PeerId>>>,
+    addrs: Arc<RwLock<HashMap<PeerId, IpAddr>>>,
     _task: tokio::task::JoinHandle<()>,
 }
 
@@ -43,21 +45,33 @@ impl Mesh {
             .expect("start listener");
 
         let peers = Arc::new(RwLock::new(HashSet::new()));
+        let addrs = Arc::new(RwLock::new(HashMap::new()));
         let peers_task = peers.clone();
+        let addrs_task = addrs.clone();
 
         let task = tokio::spawn(async move {
             loop {
                 match swarm.next().await {
                     Some(SwarmEvent::Behaviour(MdnsEvent::Discovered(list))) => {
                         let mut set = peers_task.write();
-                        for (peer, _addr) in list {
+                        let mut map = addrs_task.write();
+                        for (peer, addr) in list {
                             set.insert(peer);
+                            if let Some(ip) = addr.iter().find_map(|p| match p {
+                                Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                                Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                                _ => None,
+                            }) {
+                                map.insert(peer, ip);
+                            }
                         }
                     }
                     Some(SwarmEvent::Behaviour(MdnsEvent::Expired(list))) => {
                         let mut set = peers_task.write();
+                        let mut map = addrs_task.write();
                         for (peer, _addr) in list {
                             set.remove(&peer);
+                            map.remove(&peer);
                         }
                     }
                     Some(_) => {}
@@ -69,6 +83,7 @@ impl Mesh {
         Mesh {
             peer_id,
             peers,
+            addrs,
             _task: task,
         }
     }
@@ -76,6 +91,11 @@ impl Mesh {
     /// Return the set of discovered peers.
     pub fn peers(&self) -> HashSet<PeerId> {
         self.peers.read().clone()
+    }
+
+    /// Return mapping of peer IDs to their IP addresses.
+    pub fn addresses(&self) -> HashMap<PeerId, IpAddr> {
+        self.addrs.read().clone()
     }
 
     /// Return this node's peer ID.

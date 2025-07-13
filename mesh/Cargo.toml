@@ -1,0 +1,10 @@
+[package]
+name = "mesh"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+tokio = { version = "1.38", features = ["macros", "rt-multi-thread", "time"] }
+libp2p = { version = "0.52", features = ["tcp", "dns", "websocket", "noise", "yamux", "mdns", "tokio"] }
+futures = "0.3"
+parking_lot = "0.12"

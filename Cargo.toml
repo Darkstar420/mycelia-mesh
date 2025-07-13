@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "cmd/mycelia-node",
+    "mesh",
+]
+resolver = "2"
